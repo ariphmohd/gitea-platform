@@ -1,0 +1,127 @@
+# ==============================================================================
+# Gitea Modular Values for ArgoCD Deployment
+# ==============================================================================
+
+replicaCount: 1
+
+image:
+  repository: gitea/gitea
+  tag: "1.22.1"
+  pullPolicy: IfNotPresent
+  rootless: true
+
+serviceAccount:
+  create: true
+  name: gitea
+  annotations:
+    eks.amazonaws.com/role-arn: "${GITEA_IRSA_ROLE_ARN}"
+
+gitea:
+  admin:
+    existingSecret: gitea-admin-secret
+
+  config:
+    APP_NAME: "Enterprise Gitea Service"
+    RUN_MODE: prod
+
+    server:
+      DOMAIN: "${GITEA_DOMAIN}"
+      ROOT_URL: "http://${GITEA_DOMAIN}/"
+      HTTP_PORT: 3000
+      SSH_DOMAIN: "${GITEA_DOMAIN}"
+      SSH_PORT: 22
+      SSH_LISTEN_PORT: 2222
+      START_SSH_SERVER: true
+      DISABLE_SSH: false
+      LFS_START_SERVER: true
+
+    # Prometheus Metrics enabled in Gitea
+    metrics:
+      ENABLED: true
+      TOKEN: ""
+
+    # Database: Amazon RDS PostgreSQL (Free-Tier db.t4g.micro Single-AZ)
+    database:
+      DB_TYPE: postgres
+      HOST: "${RDS_ENDPOINT}"
+      NAME: "giteadb"
+      USER: "gitea_admin"
+      PASSWD: "${RDS_PASSWORD}"
+      SSL_MODE: disable
+
+    # Persistent Storage: Amazon EFS Multi-AZ (/data)
+    storage:
+      STORAGE_TYPE: local
+      PATH: /data/gitea/data
+
+    lfs:
+      STORAGE_TYPE: local
+      PATH: /data/git/lfs
+
+    attachment:
+      STORAGE_TYPE: local
+      PATH: /data/gitea/attachments
+
+    packages:
+      STORAGE_TYPE: local
+      PATH: /data/gitea/packages
+
+    security:
+      INSTALL_LOCK: true
+      SECRET_KEY: "${GITEA_SECRET_KEY}"
+      INTERNAL_TOKEN: "${GITEA_INTERNAL_TOKEN}"
+
+# Disable built-in DB & Cache subcharts (Using Amazon RDS PostgreSQL)
+postgresql:
+  enabled: false
+
+postgresql-ha:
+  enabled: false
+
+redis:
+  enabled: false
+
+redis-cluster:
+  enabled: false
+
+memcached:
+  enabled: false
+
+# Shared Storage via EFS One-Zone
+persistence:
+  enabled: true
+  storageClass: "efs-sc"
+  accessModes:
+    - ReadWriteMany
+  size: 50Gi
+  mountPath: /data
+
+# AWS Load Balancer Controller Ingress
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    alb.ingress.kubernetes.io/healthcheck-path: /api/v1/version
+  hosts:
+    - host: ""
+      paths:
+        - path: /
+          pathType: Prefix
+
+# Datadog APM & Metrics Auto-Discovery Annotations
+podAnnotations:
+  ad.datadoghq.com/gitea.check_names: '["prometheus"]'
+  ad.datadoghq.com/gitea.init_configs: '[{}]'
+  ad.datadoghq.com/gitea.instances: '[{"prometheus_url": "http://%%host%%:3000/metrics", "namespace": "gitea", "metrics": ["*"]}]'
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 1Gi

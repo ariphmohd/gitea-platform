@@ -1,0 +1,55 @@
+# ==============================================================================
+# Datadog Agent Values for AWS EKS Performance Monitoring & APM
+# ==============================================================================
+
+datadog:
+  # Secret containing Datadog API and App keys
+  apiKeyExistingSecret: datadog-secret
+  appKeyExistingSecret: datadog-secret
+  
+  site: "${DATADOG_SITE}"
+
+  # Application Performance Monitoring (APM Tracing)
+  apm:
+    portEnabled: true
+    socketEnabled: true
+
+  # Log Collection from All Kubernetes Containers
+  logs:
+    enabled: true
+    containerCollectAll: true
+
+  # Live Process and Container Performance Monitoring
+  processAgent:
+    enabled: true
+    processCollection: true
+
+  # DogStatsD for Custom Metrics
+  dogstatsd:
+    useSocketMode: true
+    port: 8125
+
+  # Core Cluster Metrics
+  kubeStateMetricsCore:
+    enabled: true
+
+  # Lightweight resource limits for 2-node cluster
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 300m
+      memory: 512Mi
+
+# Datadog Cluster Agent for Cluster-level Monitoring
+clusterAgent:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 150m
+      memory: 256Mi

@@ -1,0 +1,51 @@
+# ==============================================================================
+# Sample Terraform Variables for Gitea on AWS EKS (ap-south-1) - Cost Optimized
+# Copy this file to terraform.tfvars and customize for your environment
+# ==============================================================================
+
+aws_region   = "ap-south-1"
+environment  = "prod"
+project_name = "gitea"
+
+# Networking (2 AZs for Cost Optimization)
+vpc_cidr              = "10.0.0.0/16"
+availability_zones    = ["ap-south-1a", "ap-south-1b"]
+public_subnet_cidrs   = ["10.0.1.0/24", "10.0.2.0/24"]
+private_subnet_cidrs  = ["10.0.11.0/24", "10.0.12.0/24"]
+database_subnet_cidrs = ["10.0.21.0/24", "10.0.22.0/24"]
+
+# EKS Cluster (2 Worker Nodes with AWS Graviton2 t4g.small ARM64)
+cluster_name        = "gitea-eks-cluster"
+cluster_version     = "1.36"
+node_instance_types = ["t4g.small"]
+ami_type            = "AL2023_ARM_64_STANDARD"
+node_min_size       = 2
+node_max_size       = 4
+node_desired_size   = 2
+
+# RDS PostgreSQL (Free Tier / Dev Sizing: db.t4g.micro Single-AZ)
+db_instance_class          = "db.t4g.micro"
+db_allocated_storage       = 20
+db_max_allocated_storage   = 50
+db_name                    = "giteadb"
+db_username                = "gitea_admin"
+db_multi_az                = false
+db_backup_retention_period = 1
+db_engine_version          = "16.4"
+
+# Storage (Amazon EFS Standard Multi-AZ across all worker node subnets)
+enable_efs_one_zone = false
+
+# GitOps with ArgoCD
+enable_argocd = true
+
+# Domain & Certificate (Optional - for AWS ALB HTTPS termination)
+# gitea_domain    = "git.example.com"
+# certificate_arn = "arn:aws:acm:ap-south-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+tags = {
+  Environment = "prod"
+  Application = "gitea"
+  Owner       = "Dev-Team"
+  ManagedBy   = "Terraform"
+}

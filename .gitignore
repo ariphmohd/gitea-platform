@@ -1,0 +1,16 @@
+# Terraform State & Secrets
+*.tfstate
+*.tfstate.*
+*.tfvars
+!terraform.tfvars.example
+.terraform/
+.terraform.lock.hcl
+
+# Environment & Credentials
+argocd/env.conf
+*.rendered.yaml
+
+# OS & Temp files
+.DS_Store
+*.log
+*.tmp

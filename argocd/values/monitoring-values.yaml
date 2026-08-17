@@ -1,0 +1,103 @@
+# ==============================================================================
+# Prometheus & Grafana Stack Values (kube-prometheus-stack)
+# Tailored for EKS 2-Node Cluster with Gitea Metrics Scraping
+# ==============================================================================
+
+# Core Prometheus Operator Configuration
+defaultRules:
+  create: true
+  rules:
+    etcd: false
+    kubeScheduler: false
+
+prometheus:
+  prometheusSpec:
+    retention: ${PROMETHEUS_RETENTION_DAYS}d
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    
+    resources:
+      requests:
+        cpu: 150m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+
+    # Additional Scrape Config for Gitea Metrics
+    additionalScrapeConfigs:
+      - job_name: 'gitea'
+        metrics_path: '/metrics'
+        scrape_interval: 15s
+        static_configs:
+          - targets: ['gitea-http.gitea.svc.cluster.local:3000']
+            labels:
+              app: gitea
+              environment: prod
+
+# Grafana Dashboard & Visualization
+grafana:
+  enabled: true
+  adminUser: "${GRAFANA_ADMIN_USER}"
+  adminPassword: "${GRAFANA_ADMIN_PASSWORD}"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 300m
+      memory: 512Mi
+
+  service:
+    type: ClusterIP
+    port: 80
+
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: 'default'
+          orgId: 1
+          folder: ''
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+
+  dashboards:
+    default:
+      gitea-overview:
+        gnetId: 14757
+        revision: 1
+        datasource: Prometheus
+
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+    datasources:
+      enabled: true
+      defaultDatasourceEnabled: true
+
+# Alertmanager Configuration
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+# Node Exporter for EC2 Host Metrics
+nodeExporter:
+  enabled: true
+
+# Kube State Metrics for Kubernetes Resource Monitoring
+kubeStateMetrics:
+  enabled: true

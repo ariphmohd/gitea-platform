@@ -1,0 +1,104 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gitea
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: 'https://dl.gitea.com/charts/'
+    chart: gitea
+    targetRevision: '10.5.0'
+    helm:
+      releaseName: gitea
+      values: |
+        replicaCount: 2
+        image:
+          rootless: true
+        serviceAccount:
+          create: true
+          name: gitea
+          annotations:
+            eks.amazonaws.com/role-arn: "__GITEA_IRSA_ROLE_ARN__"
+        gitea:
+          config:
+            APP_NAME: "Enterprise Gitea"
+            RUN_MODE: prod
+            server:
+              DOMAIN: "__GITEA_DOMAIN__"
+              ROOT_URL: "https://__GITEA_DOMAIN__/"
+              HTTP_PORT: 3000
+              SSH_DOMAIN: "__GITEA_DOMAIN__"
+              SSH_PORT: 22
+            database:
+              DB_TYPE: postgres
+              HOST: "__RDS_ENDPOINT__"
+              NAME: "giteadb"
+              USER: "gitea_admin"
+              PASSWD: "__RDS_PASSWORD__"
+              SSL_MODE: require
+            storage:
+              STORAGE_TYPE: minio
+              MINIO_ENDPOINT: s3.ap-south-1.amazonaws.com
+              MINIO_BUCKET: "__S3_BUCKET_NAME__"
+              MINIO_LOCATION: ap-south-1
+              MINIO_USE_SSL: true
+              SERVE_DIRECT: true
+            lfs:
+              STORAGE_TYPE: minio
+              MINIO_ENDPOINT: s3.ap-south-1.amazonaws.com
+              MINIO_BUCKET: "__S3_BUCKET_NAME__"
+              MINIO_LOCATION: ap-south-1
+              MINIO_USE_SSL: true
+              MINIO_BASE_PATH: lfs/
+            attachment:
+              STORAGE_TYPE: minio
+              MINIO_ENDPOINT: s3.ap-south-1.amazonaws.com
+              MINIO_BUCKET: "__S3_BUCKET_NAME__"
+              MINIO_LOCATION: ap-south-1
+              MINIO_USE_SSL: true
+              MINIO_BASE_PATH: attachments/
+            packages:
+              STORAGE_TYPE: minio
+              MINIO_ENDPOINT: s3.ap-south-1.amazonaws.com
+              MINIO_BUCKET: "__S3_BUCKET_NAME__"
+              MINIO_LOCATION: ap-south-1
+              MINIO_USE_SSL: true
+              MINIO_BASE_PATH: packages/
+        postgresql:
+          enabled: false
+        memcached:
+          enabled: false
+        persistence:
+          enabled: true
+          storageClass: "efs-sc"
+          accessModes:
+            - ReadWriteMany
+          size: 50Gi
+          mountPath: /data
+        ingress:
+          enabled: true
+          className: alb
+          annotations:
+            kubernetes.io/ingress.class: alb
+            alb.ingress.kubernetes.io/scheme: internet-facing
+            alb.ingress.kubernetes.io/target-type: ip
+            alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+            alb.ingress.kubernetes.io/ssl-redirect: "443"
+            alb.ingress.kubernetes.io/healthcheck-path: /api/v1/version
+          hosts:
+            - host: "__GITEA_DOMAIN__"
+              paths:
+                - path: /
+                  pathType: Prefix
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: gitea
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -1,0 +1,161 @@
+# ==============================================================================
+# Production Helm Values for Gitea Deployment on AWS EKS (ap-south-1)
+# Chart: gitea/gitea (https://dl.gitea.com/charts/)
+# ==============================================================================
+
+# Global settings
+image:
+  repository: gitea/gitea
+  tag: "1.22.1"
+  pullPolicy: IfNotPresent
+  rootless: true
+
+# Replica configuration
+replicaCount: 2
+
+# Pod disruption budget for high availability
+podDisruptionBudget:
+  minAvailable: 1
+
+# Service Account with IAM Role for Service Accounts (IRSA)
+serviceAccount:
+  create: true
+  name: gitea
+  annotations:
+    eks.amazonaws.com/role-arn: "__GITEA_IRSA_ROLE_ARN__"
+
+# Gitea application configuration (app.ini)
+gitea:
+  admin:
+    existingSecret: gitea-admin-secret
+  
+  config:
+    APP_NAME: "Enterprise Gitea Service"
+    RUN_MODE: prod
+
+    server:
+      DOMAIN: "__GITEA_DOMAIN__"
+      ROOT_URL: "https://__GITEA_DOMAIN__/"
+      HTTP_PORT: 3000
+      SSH_DOMAIN: "__GITEA_DOMAIN__"
+      SSH_PORT: 22
+      SSH_LISTEN_PORT: 2222
+      START_SSH_SERVER: true
+      DISABLE_SSH: false
+      LFS_START_SERVER: true
+
+    # External Database: Amazon RDS PostgreSQL
+    database:
+      DB_TYPE: postgres
+      HOST: "__RDS_ENDPOINT__"
+      NAME: "giteadb"
+      USER: "gitea_admin"
+      PASSWD: "__RDS_PASSWORD__"
+      SSL_MODE: require
+
+    # Object Storage: Amazon S3 (ap-south-1)
+    storage:
+      STORAGE_TYPE: minio
+      MINIO_ENDPOINT: s3.ap-south-1.amazonaws.com
+      MINIO_BUCKET: "__S3_BUCKET_NAME__"
+      MINIO_LOCATION: ap-south-1
+      MINIO_USE_SSL: true
+      SERVE_DIRECT: true
+
+    lfs:
+      STORAGE_TYPE: minio
+      MINIO_ENDPOINT: s3.ap-south-1.amazonaws.com
+      MINIO_BUCKET: "__S3_BUCKET_NAME__"
+      MINIO_LOCATION: ap-south-1
+      MINIO_USE_SSL: true
+      MINIO_BASE_PATH: lfs/
+
+    attachment:
+      STORAGE_TYPE: minio
+      MINIO_ENDPOINT: s3.ap-south-1.amazonaws.com
+      MINIO_BUCKET: "__S3_BUCKET_NAME__"
+      MINIO_LOCATION: ap-south-1
+      MINIO_USE_SSL: true
+      MINIO_BASE_PATH: attachments/
+
+    packages:
+      STORAGE_TYPE: minio
+      MINIO_ENDPOINT: s3.ap-south-1.amazonaws.com
+      MINIO_BUCKET: "__S3_BUCKET_NAME__"
+      MINIO_LOCATION: ap-south-1
+      MINIO_USE_SSL: true
+      MINIO_BASE_PATH: packages/
+
+    session:
+      PROVIDER: memory
+
+    cache:
+      ADAPTER: memory
+
+    security:
+      INSTALL_LOCK: true
+      SECRET_KEY: "__GITEA_SECRET_KEY__"
+      INTERNAL_TOKEN: "__GITEA_INTERNAL_TOKEN__"
+
+# In-chart PostgreSQL disabled (using Amazon RDS)
+postgresql:
+  enabled: false
+
+# In-chart Memcached disabled
+memcached:
+  enabled: false
+
+# Shared Persistent Storage via Amazon EFS
+persistence:
+  enabled: true
+  storageClass: "efs-sc"
+  accessModes:
+    - ReadWriteMany
+  size: 50Gi
+  mountPath: /data
+
+# Ingress configuration via AWS Load Balancer Controller (ALB)
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/healthcheck-path: /api/v1/version
+    # alb.ingress.kubernetes.io/certificate-arn: "__ACM_CERTIFICATE_ARN__"
+  hosts:
+    - host: "__GITEA_DOMAIN__"
+      paths:
+        - path: /
+          pathType: Prefix
+
+# Resources & Scaling
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 2Gi
+
+# Health checks
+livenessProbe:
+  httpGet:
+    path: /api/v1/version
+    port: http
+  initialDelaySeconds: 60
+  periodSeconds: 15
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /api/v1/version
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 2
