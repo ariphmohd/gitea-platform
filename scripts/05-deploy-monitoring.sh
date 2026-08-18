@@ -111,6 +111,9 @@ rm -f "${RENDERED_VALUES}"
 # Trigger immediate ArgoCD reconciliation
 kubectl patch application kube-prometheus-stack -n argocd --type merge -p '{"operation":{"sync":{"prune":true,"syncStrategy":{"apply":{"force":true}}}}}' 2>/dev/null || true
 
+# Force refresh any stuck pods from previous webhook attempts
+kubectl delete pod -n monitoring -l app=kube-prometheus-stack-operator --force --grace-period=0 >/dev/null 2>&1 || true
+
 echo "   ✅ [SUCCESS]: Application registered & sync triggered in ArgoCD. [PROCEEDING TO STEP 4]"
 
 # ------------------------------------------------------------------------------

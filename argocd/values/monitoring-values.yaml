@@ -4,6 +4,15 @@
 # ==============================================================================
 
 # Core Prometheus Operator Configuration
+prometheusOperator:
+  enabled: true
+  admissionWebhooks:
+    enabled: false
+    patch:
+      enabled: false
+  tls:
+    enabled: false
+
 defaultRules:
   create: true
   rules:
