@@ -34,20 +34,29 @@ echo "📈 STAGE 5: Deploying Prometheus & Grafana Monitoring Stack     "
 echo "================================================================="
 
 # ------------------------------------------------------------------------------
-# Step 1: Validate Environment Parameters & Namespace Readiness
+# Step 1: Validate Environment & Pre-Install Prometheus CRDs (Server-Side Apply)
 # ------------------------------------------------------------------------------
 echo ""
-echo "🔹 [Step 1/6] Validating Monitoring Stack Configuration..."
-echo "   Component:   Namespace 'monitoring' & Admin Credentials"
-echo "   Why Running: Pre-configures namespace and Grafana administrative access"
-echo "   Dependency:  Kubernetes API (Stage 2) & ArgoCD (Stage 3)"
+echo "🔹 [Step 1/6] Installing Prometheus Operator CRDs (Server-Side Apply)..."
+echo "   Component:   Prometheus, Alertmanager, ServiceMonitor, PodMonitor CRDs"
+echo "   Why Running: Bypasses Kubernetes 256KB annotation limits using native Server-Side Apply"
+echo "   Dependency:  Kubernetes API (Stage 2)"
 
 kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 
+CRD_BASE="https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.75.1/example/prometheus-operator-crd"
+kubectl apply --server-side --force-conflicts -f "${CRD_BASE}/monitoring.coreos.com_alertmanagers.yaml" >/dev/null
+kubectl apply --server-side --force-conflicts -f "${CRD_BASE}/monitoring.coreos.com_podmonitors.yaml" >/dev/null
+kubectl apply --server-side --force-conflicts -f "${CRD_BASE}/monitoring.coreos.com_probes.yaml" >/dev/null
+kubectl apply --server-side --force-conflicts -f "${CRD_BASE}/monitoring.coreos.com_prometheuses.yaml" >/dev/null
+kubectl apply --server-side --force-conflicts -f "${CRD_BASE}/monitoring.coreos.com_prometheusrules.yaml" >/dev/null
+kubectl apply --server-side --force-conflicts -f "${CRD_BASE}/monitoring.coreos.com_servicemonitors.yaml" >/dev/null
+kubectl apply --server-side --force-conflicts -f "${CRD_BASE}/monitoring.coreos.com_thanosrulers.yaml" >/dev/null
+
 echo "   • Grafana User:  ${GRAFANA_ADMIN_USER}"
 echo "   • Retention:     ${PROMETHEUS_RETENTION_DAYS} Days"
-echo "   • Scrape Target: gitea-http.gitea.svc.cluster.local:3000 (/metrics)"
-echo "   ✅ [SUCCESS]: Configuration validated. [PROCEEDING TO STEP 2]"
+echo "   • CRDs Applied:  Alertmanagers, PodMonitors, Prometheuses, ServiceMonitors (Server-Side)"
+echo "   ✅ [SUCCESS]: CRDs registered & configuration validated. [PROCEEDING TO STEP 2]"
 
 # ------------------------------------------------------------------------------
 # Step 2: Safely Render Helm Values for kube-prometheus-stack
@@ -240,7 +249,7 @@ echo "   • Username:        ${GRAFANA_ADMIN_USER}"
 echo "   • Password:        ${GRAFANA_ADMIN_PASSWORD}"
 echo "-----------------------------------------------------------------"
 echo "🔍 ACCESS PROMETHEUS DIRECTLY (OPTIONAL):"
-echo "   • Port-Forward:    kubectl port-forward svc/kube-prometheus-stack-prometheus -n monitoring 9090:9090"
+echo "   • Port-Forward:    kubectl port-forward svc/prometheus-operated -n monitoring 9090:9090"
 echo "   • Web URL:         http://localhost:9090"
 echo "================================================================="
 echo ""

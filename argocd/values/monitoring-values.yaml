@@ -1,9 +1,12 @@
 # ==============================================================================
 # Prometheus & Grafana Stack Values (kube-prometheus-stack)
-# Tailored for EKS 2-Node Cluster with Gitea Metrics Scraping
+# Tailored for AWS EKS Cluster with Multi-AZ Node & Gitea Metrics Scraping
 # ==============================================================================
 
 # Core Prometheus Operator Configuration
+crds:
+  enabled: false
+
 prometheusOperator:
   enabled: true
   admissionWebhooks:
@@ -18,13 +21,36 @@ defaultRules:
   rules:
     etcd: false
     kubeScheduler: false
+    kubeControllerManager: false
+
+# Kubelet & cAdvisor metrics for AWS EKS Container/Pod Metrics
+kubelet:
+  enabled: true
+  serviceMonitor:
+    cAdvisor: true
+    resource: true
+    probes: true
+
+# CoreDNS metrics
+coreDns:
+  enabled: true
+
+# API Server metrics
+kubeApiServer:
+  enabled: true
 
 prometheus:
   prometheusSpec:
     retention: ${PROMETHEUS_RETENTION_DAYS}d
     serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
     podMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelector: {}
+    podMonitorNamespaceSelector: {}
     ruleSelectorNilUsesHelmValues: false
+    ruleSelector: {}
+    ruleNamespaceSelector: {}
     
     resources:
       requests:
@@ -50,6 +76,8 @@ grafana:
   enabled: true
   adminUser: "${GRAFANA_ADMIN_USER}"
   adminPassword: "${GRAFANA_ADMIN_PASSWORD}"
+  defaultDashboardsEnabled: true
+  defaultDashboardsEditable: true
 
   resources:
     requests:
@@ -63,19 +91,6 @@ grafana:
     type: ClusterIP
     port: 80
 
-  dashboardProviders:
-    dashboardproviders.yaml:
-      apiVersion: 1
-      providers:
-        - name: 'default'
-          orgId: 1
-          folder: ''
-          type: file
-          disableDeletion: false
-          editable: true
-          options:
-            path: /var/lib/grafana/dashboards/default
-
   dashboards:
     default:
       gitea-overview:
@@ -87,9 +102,12 @@ grafana:
     dashboards:
       enabled: true
       label: grafana_dashboard
+      labelValue: ""
+      searchNamespace: ALL
     datasources:
       enabled: true
       defaultDatasourceEnabled: true
+      isDefaultDatasource: true
 
 # Alertmanager Configuration
 alertmanager:
