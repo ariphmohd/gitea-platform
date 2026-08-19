@@ -1,15 +1,17 @@
-# 🚀 Enterprise Gitea Platform on AWS EKS with ArgoCD GitOps & Full Observability
+# 🚀 Enterprise Gitea Platform on AWS EKS with ArgoCD GitOps, Observability & Custom Domain HTTPS
 
 [![AWS](https://img.shields.io/badge/AWS-ap--south--1-FF9900?logo=amazon-aws&logoColor=white)](https://aws.amazon.com/)
 [![EKS](https://img.shields.io/badge/Kubernetes-EKS_v1.30-326CE5?logo=kubernetes&logoColor=white)](https://aws.amazon.com/eks/)
 [![Terraform](https://img.shields.io/badge/Terraform-v1.5+-7B42BC?logo=terraform&logoColor=white)](https://www.terraform.io/)
 [![ArgoCD](https://img.shields.io/badge/GitOps-ArgoCD-EF7B4D?logo=argo&logoColor=white)](https://argo-cd.readthedocs.io/)
 [![Gitea](https://img.shields.io/badge/Git-Gitea_v1.22-609926?logo=gitea&logoColor=white)](https://about.gitea.com/)
+[![Route53](https://img.shields.io/badge/DNS-Route_53-8C4FFF?logo=amazon-route53&logoColor=white)](https://aws.amazon.com/route53/)
+[![ACM](https://img.shields.io/badge/SSL-TLS_1.3_ACM-147EBA?logo=letsencrypt&logoColor=white)](https://aws.amazon.com/certificate-manager/)
 [![Prometheus](https://img.shields.io/badge/Monitoring-Prometheus-E6522C?logo=prometheus&logoColor=white)](https://prometheus.io/)
 [![Grafana](https://img.shields.io/badge/Visualization-Grafana-F46800?logo=grafana&logoColor=white)](https://grafana.com/)
 [![Datadog](https://img.shields.io/badge/Observability-Datadog-632CA6?logo=datadog&logoColor=white)](https://www.datadoghq.com/)
 
-A cost-optimized, enterprise-grade GitOps platform deploying **[Gitea](https://about.gitea.com/)** on **[Amazon Elastic Kubernetes Service (EKS)](https://aws.amazon.com/eks/)** in the **AWS Mumbai Region (`ap-south-1`)**. Managed via **[ArgoCD](https://argo-cd.readthedocs.io/)**, backed by **[Amazon RDS PostgreSQL](https://aws.amazon.com/rds/postgresql/)**, **[Amazon EFS Multi-AZ](https://aws.amazon.com/efs/)**, and **[Amazon S3](https://aws.amazon.com/s3/)**, and observed with **[Prometheus & Grafana](https://prometheus-community.github.io/helm-charts/)** and **[Datadog APM](https://docs.datadoghq.com/containers/kubernetes/)**.
+A cost-optimized, enterprise-grade GitOps platform deploying **[Gitea](https://about.gitea.com/)** on **[Amazon Elastic Kubernetes Service (EKS)](https://aws.amazon.com/eks/)** in the **AWS Mumbai Region (`ap-south-1`)**. Managed via **[ArgoCD](https://argo-cd.readthedocs.io/)**, backed by **[Amazon RDS PostgreSQL](https://aws.amazon.com/rds/postgresql/)**, **[Amazon EFS Multi-AZ](https://aws.amazon.com/efs/)**, and **[Amazon S3](https://aws.amazon.com/s3/)**, secured with **[Route 53 & AWS ACM Wildcard SSL](https://aws.amazon.com/certificate-manager/)** (`*.ariphmohd.shop`), and observed with **[Prometheus & Grafana](https://prometheus-community.github.io/helm-charts/)** and **[Datadog APM](https://docs.datadoghq.com/containers/kubernetes/)**.
 
 ---
 
@@ -17,13 +19,20 @@ A cost-optimized, enterprise-grade GitOps platform deploying **[Gitea](https://a
 
 ```mermaid
 flowchart TB
-    subgraph Internet ["🌐 Public Internet & Users"]
+    subgraph Internet ["🌐 Public Internet & Developers"]
         Devs["Developers & SRE Team"]
+        DomainUser["Browser Users (HTTPS / Port 443)"]
+    end
+
+    subgraph RegistrarDNS ["🌐 DNS & Certificate Management"]
+        Registrar["GoDaddy Registrar (ariphmohd.shop)"]
+        R53Zone["AWS Route 53 Public Hosted Zone\n• 100% SLA Anycast DNS\n• Subdomains: gitea, grafana, argocd"]
+        ACMCert["AWS Certificate Manager (ACM)\n• Free Wildcard TLS 1.3 (*.ariphmohd.shop)\n• Auto-Renewing SSL Certificate"]
     end
 
     subgraph AWS ["☁️ AWS Cloud (ap-south-1 Mumbai Region)"]
         subgraph PublicSubnets ["Public Subnets (3 Availability Zones)"]
-            ALB["AWS Application Load Balancer\n(Internet-Facing, Port 80 / 443)"]
+            ALB["AWS Application Load Balancer (Shared Ingress Group)\n• HTTPS: Port 443 (TLS 1.3 Offload)\n• HTTP: Port 80 (Auto-Redirect -> 443)\n• AWS Shield Standard (DDoS Protection)"]
             NAT["NAT Gateway (AZ-a)\n(Outbound Internet for Private Subnets)"]
         end
 
@@ -36,13 +45,13 @@ flowchart TB
                 end
 
                 subgraph ArgoCDNS ["Namespace: argocd"]
-                    ArgoServer["ArgoCD Server UI"]
+                    ArgoServer["ArgoCD Server UI\n(https://argocd.ariphmohd.shop)"]
                     ArgoCtrl["ArgoCD Application Controller"]
                     ArgoRepo["ArgoCD Repo Server"]
                 end
 
                 subgraph GiteaNS ["Namespace: gitea"]
-                    GiteaPod["Gitea Application Pod\n(Port 3000 HTTP / 2222 SSH)"]
+                    GiteaPod["Gitea Application Pod\n(https://gitea.ariphmohd.shop)"]
                     GiteaInit["Init Containers:\n• wait-db • configure-gitea"]
                     GiteaPVC["PVC: gitea-shared-storage\n(50Gi ReadWriteMany)"]
                 end
@@ -50,7 +59,7 @@ flowchart TB
                 subgraph MonitoringNS ["Namespace: monitoring"]
                     PromOp["Prometheus Operator"]
                     PromServer["Prometheus Server StatefulSet"]
-                    GrafanaApp["Grafana Visualization\n(Pre-loaded Dashboards)"]
+                    GrafanaApp["Grafana Visualization\n(https://grafana.ariphmohd.shop)"]
                     NodeExp["Node Exporter DaemonSet\n(3x Worker Nodes)"]
                     KSM["Kube-State-Metrics"]
                 end
@@ -72,9 +81,19 @@ flowchart TB
         end
     end
 
+    %% DNS & SSL Flow
+    Registrar -->|Nameserver Delegation| R53Zone
+    R53Zone -->|Auto-Validates CNAME| ACMCert
+    ACMCert -->|Binds TLS 1.3 Cert| ALB
+    R53Zone -->|Subdomain Routing| ALB
+
     %% Network & Traffic Routing
-    Devs -->|HTTP Traffic| ALB
-    ALB -->|Target Group: Port 3000| GiteaPod
+    Devs -->|HTTPS Traffic| ALB
+    DomainUser -->|HTTPS Traffic| ALB
+    ALB -->|Host: gitea.ariphmohd.shop| GiteaPod
+    ALB -->|Host: grafana.ariphmohd.shop| GrafanaApp
+    ALB -->|Host: argocd.ariphmohd.shop| ArgoServer
+
     GiteaPod -->|Port 5432 SQL Queries| RDS
     GiteaPod -->|Mounts /data| GiteaPVC
     GiteaPVC -->|NFS Protocol| EFS
@@ -108,6 +127,7 @@ flowchart LR
     C5 --> C6["6. ArgoCD GitOps"]
     C6 --> C7["7. Gitea Core"]
     C7 --> C8["8. Prometheus & Grafana"]
+    C8 --> C9["9. Route 53 & ACM Custom Domain"]
 ```
 
 ---
@@ -213,6 +233,17 @@ flowchart LR
 
 ---
 
+### 9️⃣ Custom Domain, Route 53 & AWS Certificate Manager (ACM)
+* **Official Docs**: [Amazon Route 53](https://docs.aws.amazon.com/route53/) & [AWS Certificate Manager (ACM)](https://docs.aws.amazon.com/acm/)
+* **Why We Use It**: Enables production HTTPS endpoints with custom domains (`ariphmohd.shop`) backed by auto-renewing SSL/TLS 1.3 certificates.
+* **Security & Ingress Architecture**:
+  * **AWS ACM Wildcard Certificate**: Single certificate covering `ariphmohd.shop` and `*.ariphmohd.shop` at **$0.00 / month**.
+  * **Shared ALB Ingress Group (`group.name: platform`)**: Consolidates `gitea`, `grafana`, and `argocd` under **ONE single Application Load Balancer** (saving ~$36/month).
+  * **Automated Redirection**: Port 80 (HTTP) automatically 301-redirects to Port 443 (HTTPS).
+  * **DDoS Mitigation**: Built-in Layer 3/4 protection via **AWS Shield Standard**.
+
+---
+
 ## 📂 3. Repository Directory Structure
 
 ```
@@ -235,11 +266,20 @@ gitea-platform/
 │   │   ├── rds/                     # db.t4g.micro PostgreSQL, Secrets Manager
 │   │   ├── storage/                 # EFS Multi-AZ & S3 storage bucket
 │   │   └── iam/                     # IRSA roles for Gitea, ALB Controller, EFS
-│   ├── providers.tf                 # AWS, Helm, Kubernetes providers
+│   ├── custom-domain/               # 🌐 Standalone Route 53 & ACM Wildcard Module
+│   │   ├── providers.tf             # AWS provider (ap-south-1)
+│   │   ├── variables.tf             # Domain name (ariphmohd.shop) & subdomains
+│   │   ├── main.tf                  # Route 53 Zone, ACM Cert, DNS validation
+│   │   └── outputs.tf               # 4 Name Servers & Certificate ARN
+│   ├── providers.tf                 # Base AWS, Helm, Kubernetes providers
 │   ├── variables.tf                 # Configurable variables (defaults to ap-south-1)
 │   ├── main.tf                      # Root orchestration & module linkage
 │   ├── outputs.tf                   # Endpoints, ARNs, and connection strings
 │   └── terraform.tfvars.example     # Example variable assignments
+├── k8s/
+│   ├── efs-storageclass.yaml        # Dynamic EFS Provisioner StorageClass
+│   ├── alb-ingress.yaml             # Base AWS ALB Ingress
+│   └── custom-domain-ingress.yaml   # Multi-Subdomain Shared ALB Ingress (HTTPS: 443)
 ├── scripts/
 │   ├── 01-infra-terraform.sh        # Stage 1: Terraform Cloud Infrastructure
 │   ├── 02-eks-bootstrap.sh          # Stage 2: AWS EKS Drivers & Core CRDs
@@ -247,6 +287,7 @@ gitea-platform/
 │   ├── 04-deploy-gitea.sh           # Stage 4: Gitea Application GitOps Pipeline
 │   ├── 05-deploy-monitoring.sh      # Stage 5: Prometheus & Grafana Stack
 │   ├── 06-deploy-datadog.sh         # Stage 6: Datadog Observability Stack
+│   ├── 07-setup-custom-domain.sh    # Stage 7: Custom Domain Setup & Multi-Host HTTPS
 │   ├── reset-stage4.sh              # Fast 5-second teardown for Stage 4
 │   ├── reset-stage5.sh              # Fast 5-second teardown for Stage 5
 │   └── destroy.sh                   # Full AWS Cloud infrastructure teardown
@@ -265,6 +306,7 @@ flowchart LR
     S3 --> S4["Stage 4: Gitea App\n(Git Platform & ALB)"]
     S4 --> S5["Stage 5: Monitoring\n(Prometheus & Grafana)"]
     S5 --> S6["Stage 6: Datadog\n(APM & Logs)"]
+    S6 --> S7["Stage 7: Custom Domain\n(Route 53 & Wildcard HTTPS)"]
 ```
 
 ### 📋 Step 0: Prerequisites
@@ -331,15 +373,24 @@ Configures the Datadog Agent DaemonSet on all 3 worker nodes.
 
 ---
 
-## 🌐 5. Service Access & Verification Guide
+### 🌐 Stage 7: Setup Custom Domain & Multi-Host HTTPS Ingress *(Standalone)*
+Provisions the Route 53 zone, issues the wildcard ACM SSL certificate (`*.ariphmohd.shop`), displays GoDaddy nameserver instructions, and binds all subdomains to the shared ALB.
 
-| Service | Access Type | Connection Command / URL | Default Credentials |
+```bash
+./scripts/07-setup-custom-domain.sh
+```
+
+---
+
+## 🌐 5. Production Service Access & Verification Guide
+
+| Service | Access Type | Production HTTPS / Local URL | Default Credentials |
 | :--- | :--- | :--- | :--- |
-| **Gitea Web UI** | **Public AWS ALB** | `http://<ALB-DNS-NAME>` *(Printed by Stage 4)* | **User**: `gitea_admin`<br>**Password**: `GiteaSecurePassword123!` |
-| **Gitea (Local)** | Port-Forward | `kubectl port-forward svc/gitea-http -n gitea 3000:3000`<br>URL: `http://localhost:3000` | Same as above |
-| **Grafana Dashboard** | Port-Forward | `kubectl port-forward svc/kube-prometheus-stack-grafana -n monitoring 3001:80`<br>URL: `http://localhost:3001` | **User**: `admin`<br>**Password**: `GrafanaSecurePassword123!` |
-| **Prometheus Targets** | Port-Forward | `kubectl port-forward svc/prometheus-operated -n monitoring 9090:9090`<br>URL: `http://localhost:9090/targets` | *No Authentication Required* |
-| **ArgoCD Server** | Port-Forward | `kubectl port-forward svc/argocd-server -n argocd 8080:80`<br>URL: `http://localhost:8080` | **User**: `admin`<br>**Password**: `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" \| base64 -d` |
+| **☕ Gitea Web UI** | **Custom Domain (HTTPS)** | [https://gitea.ariphmohd.shop](https://gitea.ariphmohd.shop) | **User**: `gitea_admin`<br>**Password**: `GiteaSecurePassword123!` |
+| **📈 Grafana Dashboards** | **Custom Domain (HTTPS)** | [https://grafana.ariphmohd.shop](https://grafana.ariphmohd.shop) | **User**: `admin`<br>**Password**: `GrafanaSecurePassword123!` |
+| **🐙 ArgoCD GitOps** | **Custom Domain (HTTPS)** | [https://argocd.ariphmohd.shop](https://argocd.ariphmohd.shop) | **User**: `admin`<br>**Password**: `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" \| base64 -d` |
+| **🔍 Prometheus Targets** | Port-Forward | `kubectl port-forward svc/prometheus-operated -n monitoring 9090:9090`<br>URL: `http://localhost:9090/targets` | *No Authentication Required* |
+| **☕ Gitea (Local Fallback)** | Port-Forward | `kubectl port-forward svc/gitea-http -n gitea 3000:3000`<br>URL: `http://localhost:3000` | Same as Gitea credentials |
 
 ---
 
@@ -375,8 +426,11 @@ Deletes all Kubernetes resources, RDS databases, EFS storage, EKS clusters, and 
 | **Network Address Translation** | Single NAT Gateway (AZ-a) | ~$32.00 | Single shared NAT saves ~$65/mo vs multi-NAT |
 | **Shared Persistent Storage** | Amazon EFS Multi-AZ (50Gi) | ~$8.00 | Pay-per-use Elastic throughput |
 | **Object Storage** | Amazon S3 Standard | ~$0.50 | S3 Intelligent-Tiering for LFS & backups |
-| **Application Load Balancer** | AWS ELB (ALB) | ~$18.00 | Single internet-facing entrypoint for all services |
-| **Total Estimated Cost** | — | **~$180.60 / month** | **Over 60% savings vs x86 multi-NAT architectures** |
+| **Application Load Balancer** | AWS ELB (Shared ALB Group) | ~$18.00 | Ingress Grouping shares 1 ALB for Gitea, Grafana, ArgoCD |
+| **Route 53 DNS Zone** | Route 53 Hosted Zone | $0.50 | 100% SLA global Anycast DNS for `ariphmohd.shop` |
+| **Public SSL/TLS Certificates** | AWS Certificate Manager (ACM) | **$0.00 (Free)** | Free auto-renewing wildcard certificate (`*.ariphmohd.shop`) |
+| **DDoS Protection** | AWS Shield Standard | **$0.00 (Free)** | Built-in Layer 3/4 DDoS protection |
+| **Total Estimated Cost** | — | **~$181.10 / month** | **Over 60% savings vs standard multi-ALB architectures** |
 
 ---
 
