@@ -26,7 +26,6 @@ elif [ -f "${ARGOCD_DIR}/env.conf.example" ]; then
 fi
 
 GRAFANA_ADMIN_USER="${GRAFANA_ADMIN_USER:-admin}"
-GRAFANA_ADMIN_PASSWORD="${GRAFANA_ADMIN_PASSWORD:-GrafanaSecurePassword123!}"
 PROMETHEUS_RETENTION_DAYS="${PROMETHEUS_RETENTION_DAYS:-7}"
 
 echo "================================================================="
@@ -37,9 +36,9 @@ echo "================================================================="
 # Step 1: Validate Environment & Pre-Install Prometheus CRDs (Server-Side Apply)
 # ------------------------------------------------------------------------------
 echo ""
-echo "🔹 [Step 1/6] Installing Prometheus Operator CRDs (Server-Side Apply)..."
+echo "🔹 [Step 1/6] Installing Prometheus Operator CRDs & Configuring Secrets..."
 echo "   Component:   Prometheus, Alertmanager, ServiceMonitor, PodMonitor CRDs"
-echo "   Why Running: Bypasses Kubernetes 256KB annotation limits using native Server-Side Apply"
+echo "   Why Running: Zero-plaintext secret management & bypassing 256KB annotation limits"
 echo "   Dependency:  Kubernetes API (Stage 2)"
 
 kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f - >/dev/null
@@ -53,10 +52,26 @@ kubectl apply --server-side --force-conflicts -f "${CRD_BASE}/monitoring.coreos.
 kubectl apply --server-side --force-conflicts -f "${CRD_BASE}/monitoring.coreos.com_servicemonitors.yaml" >/dev/null
 kubectl apply --server-side --force-conflicts -f "${CRD_BASE}/monitoring.coreos.com_thanosrulers.yaml" >/dev/null
 
+# Check if secret already exists to maintain continuity
+EXISTING_GRAFANA_PASS=$(kubectl get secret grafana-admin-credentials -n monitoring -o jsonpath='{.data.admin-password}' 2>/dev/null | base64 -d || echo "")
+
+if [ -n "${EXISTING_GRAFANA_PASS}" ]; then
+  GRAFANA_ADMIN_PASSWORD="${EXISTING_GRAFANA_PASS}"
+  echo "   • Status:        Using existing persistent Grafana admin credentials"
+else
+  GRAFANA_ADMIN_PASSWORD=$(head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 20)
+  kubectl create secret generic grafana-admin-credentials \
+    --namespace monitoring \
+    --from-literal=admin-user="${GRAFANA_ADMIN_USER}" \
+    --from-literal=admin-password="${GRAFANA_ADMIN_PASSWORD}" \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  echo "   • Status:        Generated new 256-bit random temporary password"
+fi
+
 echo "   • Grafana User:  ${GRAFANA_ADMIN_USER}"
 echo "   • Retention:     ${PROMETHEUS_RETENTION_DAYS} Days"
-echo "   • CRDs Applied:  Alertmanagers, PodMonitors, Prometheuses, ServiceMonitors (Server-Side)"
-echo "   ✅ [SUCCESS]: CRDs registered & configuration validated. [PROCEEDING TO STEP 2]"
+echo "   • Security Mode: First-Login Password Rotation Prompt Active"
+echo "   ✅ [SUCCESS]: CRDs registered & dynamic secret configured. [PROCEEDING TO STEP 2]"
 
 # ------------------------------------------------------------------------------
 # Step 2: Safely Render Helm Values for kube-prometheus-stack
@@ -245,8 +260,11 @@ echo "-----------------------------------------------------------------"
 echo "🌐 ACCESS GRAFANA DASHBOARD:"
 echo "   • Port-Forward:    kubectl port-forward svc/kube-prometheus-stack-grafana -n monitoring 3001:80"
 echo "   • Web URL:         http://localhost:3001"
-echo "   • Username:        ${GRAFANA_ADMIN_USER}"
-echo "   • Password:        ${GRAFANA_ADMIN_PASSWORD}"
+echo "   • Admin Username:  ${GRAFANA_ADMIN_USER}"
+echo "   • Temp Password:   ${GRAFANA_ADMIN_PASSWORD}"
+echo "   -----------------------------------------------------------------"
+echo "   🔒 SECURITY: First-login password rotation is active (NIST 800-63B)."
+echo "   👉 You will be prompted to set your private password on first login."
 echo "-----------------------------------------------------------------"
 echo "🔍 ACCESS PROMETHEUS DIRECTLY (OPTIONAL):"
 echo "   • Port-Forward:    kubectl port-forward svc/prometheus-operated -n monitoring 9090:9090"

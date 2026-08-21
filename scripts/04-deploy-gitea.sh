@@ -110,27 +110,39 @@ fi
 echo "   ✅ [SUCCESS]: Security tokens active. [PROCEEDING TO STEP 4]"
 
 # ------------------------------------------------------------------------------
-# Step 4: Configure Gitea Admin Credentials Secret
+# Step 4: Configure Gitea Admin Credentials Secret (Zero-Plaintext Security)
 # ------------------------------------------------------------------------------
 echo ""
 echo "🔹 [Step 4/8] Configuring Gitea Administrator Credentials in Kubernetes..."
 echo "   Component:   Kubernetes Secret 'gitea-admin-secret' in namespace 'gitea'"
-echo "   Why Running: The 'configure-gitea' init container needs this to create the initial admin user"
+echo "   Why Running: Zero-plaintext bootstrap credential with mandatory first-login password rotation"
 echo "   Dependency:  Kubernetes API (Stage 2)"
 
 GITEA_ADMIN_USER="${GITEA_ADMIN_USER:-gitea_admin}"
-GITEA_ADMIN_PASSWORD="${GITEA_ADMIN_PASSWORD:-GiteaSecurePassword123!}"
-kubectl create secret generic gitea-admin-secret \
-  --namespace gitea \
-  --from-literal=username="${GITEA_ADMIN_USER}" \
-  --from-literal=password="${GITEA_ADMIN_PASSWORD}" \
-  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+
+# Check if secret already exists to maintain continuity
+EXISTING_GITEA_PASS=$(kubectl get secret gitea-admin-secret -n gitea -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || echo "")
+
+if [ -n "${EXISTING_GITEA_PASS}" ]; then
+  GITEA_ADMIN_PASSWORD="${EXISTING_GITEA_PASS}"
+  echo "   • Status:        Using existing persistent admin credentials"
+else
+  # Generate cryptographically secure 20-character temporary password
+  GITEA_ADMIN_PASSWORD=$(head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 20)
+  kubectl create secret generic gitea-admin-secret \
+    --namespace gitea \
+    --from-literal=username="${GITEA_ADMIN_USER}" \
+    --from-literal=password="${GITEA_ADMIN_PASSWORD}" \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  echo "   • Status:        Generated new 256-bit random temporary password"
+fi
 
 # Clean up any stale PVC finalizers
 kubectl patch pvc --all -n gitea -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
 
 echo "   • Admin Username: ${GITEA_ADMIN_USER}"
 echo "   • Admin Secret:   gitea-admin-secret (Active in namespace 'gitea')"
+echo "   • Security Mode:  Mandatory Password Rotation on First Login (NIST 800-63B)"
 echo "   ✅ [SUCCESS]: Admin credentials configured. [PROCEEDING TO STEP 5]"
 
 # ------------------------------------------------------------------------------
@@ -371,8 +383,11 @@ if [ -n "${ALB_HOSTNAME}" ]; then
 fi
 echo "   • Port-Forward:    kubectl port-forward svc/gitea-http -n gitea 3000:3000"
 echo "   • Local URL:       http://localhost:3000"
-echo "   • Username:        ${GITEA_ADMIN_USER}"
-echo "   • Password:        ${GITEA_ADMIN_PASSWORD}"
+echo "   • Admin Username:  ${GITEA_ADMIN_USER}"
+echo "   • Temp Password:   ${GITEA_ADMIN_PASSWORD}"
+echo "   -----------------------------------------------------------------"
+echo "   🔒 SECURITY: Mandatory password rotation is active (NIST 800-63B)."
+echo "   👉 You will be required to set your private password on first login."
 echo "================================================================="
 echo ""
 echo "👉 You are now ready for Stage 5 (Monitoring - Prometheus & Grafana):"

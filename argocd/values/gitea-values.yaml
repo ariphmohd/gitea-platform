@@ -19,6 +19,7 @@ serviceAccount:
 gitea:
   admin:
     existingSecret: gitea-admin-secret
+    mustChangePassword: true
 
   config:
     APP_NAME: "Enterprise Gitea Service"

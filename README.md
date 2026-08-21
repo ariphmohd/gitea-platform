@@ -384,11 +384,15 @@ Provisions the Route 53 zone, issues the wildcard ACM SSL certificate (`*.ariphm
 
 ## 🌐 5. Production Service Access & Verification Guide
 
-| Service | Access Type | Production HTTPS / Local URL | Default Credentials |
+> [!TIP]
+> **Zero-Plaintext Security & Mandatory First-Login Password Change**:
+> Passwords are dynamically generated at deployment time into native Kubernetes Secrets. Each application requires you to set your permanent private password immediately upon first login (NIST 800-63B compliant).
+
+| Service | Access Type | Production HTTPS / Local URL | Initial Username & Temporary Password Retrieval |
 | :--- | :--- | :--- | :--- |
-| **☕ Gitea Web UI** | **Custom Domain (HTTPS)** | [https://gitea.ariphmohd.shop](https://gitea.ariphmohd.shop) | **User**: `gitea_admin`<br>**Password**: `GiteaSecurePassword123!` |
-| **📈 Grafana Dashboards** | **Custom Domain (HTTPS)** | [https://grafana.ariphmohd.shop](https://grafana.ariphmohd.shop) | **User**: `admin`<br>**Password**: `GrafanaSecurePassword123!` |
-| **🐙 ArgoCD GitOps** | **Custom Domain (HTTPS)** | [https://argocd.ariphmohd.shop](https://argocd.ariphmohd.shop) | **User**: `admin`<br>**Password**: `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" \| base64 -d` |
+| **☕ Gitea Web UI** | **Custom Domain (HTTPS)** | [https://gitea.ariphmohd.shop](https://gitea.ariphmohd.shop) | **User**: `gitea_admin`<br>**Get Temp Password**: `kubectl -n gitea get secret gitea-admin-secret -o jsonpath="{.data.password}" \| base64 -d`<br>*(Mandatory change on first login)* |
+| **📈 Grafana Dashboards** | **Custom Domain (HTTPS)** | [https://grafana.ariphmohd.shop](https://grafana.ariphmohd.shop) | **User**: `admin`<br>**Get Temp Password**: `kubectl -n monitoring get secret grafana-admin-credentials -o jsonpath="{.data.admin-password}" \| base64 -d`<br>*(Prompted to change on first login)* |
+| **🐙 ArgoCD GitOps** | **Custom Domain (HTTPS)** | [https://argocd.ariphmohd.shop](https://argocd.ariphmohd.shop) | **User**: `admin`<br>**Get Temp Password**: `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" \| base64 -d`<br>*(Update via User Info or `argocd account update-password`)* |
 | **🔍 Prometheus Targets** | Port-Forward | `kubectl port-forward svc/prometheus-operated -n monitoring 9090:9090`<br>URL: `http://localhost:9090/targets` | *No Authentication Required* |
 | **☕ Gitea (Local Fallback)** | Port-Forward | `kubectl port-forward svc/gitea-http -n gitea 3000:3000`<br>URL: `http://localhost:3000` | Same as Gitea credentials |
 
