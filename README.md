@@ -13,6 +13,10 @@
 
 A cost-optimized, enterprise-grade GitOps platform deploying **[Gitea](https://about.gitea.com/)** on **[Amazon Elastic Kubernetes Service (EKS)](https://aws.amazon.com/eks/)** in the **AWS Mumbai Region (`ap-south-1`)**. Managed via **[ArgoCD](https://argo-cd.readthedocs.io/)**, backed by **[Amazon RDS PostgreSQL](https://aws.amazon.com/rds/postgresql/)**, **[Amazon EFS Multi-AZ](https://aws.amazon.com/efs/)**, and **[Amazon S3](https://aws.amazon.com/s3/)**, secured with **[Route 53 & AWS ACM Wildcard SSL](https://aws.amazon.com/certificate-manager/)** (`*.ariphmohd.shop`), and observed with **[Prometheus & Grafana](https://prometheus-community.github.io/helm-charts/)** and **[Datadog APM](https://docs.datadoghq.com/containers/kubernetes/)**.
 
+> 📖 **Comprehensive Engineering Manual**:
+> For the complete, deep-dive architectural handbook explaining all 9 stages, component justifications, SRE interview Q&As, and official documentation links, see:
+> 👉 **[`docs/ARCHITECTURE_AND_DEPLOYMENT_GUIDE.md`](./docs/ARCHITECTURE_AND_DEPLOYMENT_GUIDE.md)**
+
 ---
 
 ## 🏛 1. End-to-End System Architecture
