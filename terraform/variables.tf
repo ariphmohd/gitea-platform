@@ -191,6 +191,22 @@ variable "certificate_arn" {
 }
 
 # ------------------------------------------------------------------------------
+# ECR Container Registry Variables (Story 1)
+# ------------------------------------------------------------------------------
+
+variable "enable_ecr" {
+  description = "Set to true to provision private Amazon ECR repository for custom Gitea images"
+  type        = bool
+  default     = true
+}
+
+variable "ecr_repository_name" {
+  description = "Name of the Amazon ECR repository"
+  type        = string
+  default     = "gitea-custom"
+}
+
+# ------------------------------------------------------------------------------
 # General Tags
 # ------------------------------------------------------------------------------
 

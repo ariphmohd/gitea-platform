@@ -93,3 +93,17 @@ module "iam" {
   db_password_secret_arn = module.rds.db_password_secret_arn
   tags                   = var.tags
 }
+
+# ==============================================================================
+# 6. Amazon ECR Private Container Registry (Story 1)
+# ==============================================================================
+
+module "ecr" {
+  count  = var.enable_ecr ? 1 : 0
+  source = "./modules/ecr"
+
+  environment     = var.environment
+  project_name    = var.project_name
+  repository_name = var.ecr_repository_name
+  tags            = var.tags
+}

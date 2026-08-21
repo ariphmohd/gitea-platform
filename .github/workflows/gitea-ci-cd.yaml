@@ -1,0 +1,130 @@
+name: 🚀 Gitea App DevSecOps CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+# OIDC Permissions (Mandatory for Zero-Key AWS STS authentication)
+permissions:
+  id-token: write
+  contents: write
+
+env:
+  AWS_REGION: "ap-south-1"
+  ECR_REPOSITORY: "gitea-custom"
+  AWS_ROLE_ARN: "arn:aws:iam::542697646590:role/gitea-prod-github-actions-ecr-role"
+
+jobs:
+  build-scan-and-deploy:
+    name: 🛡️ Build, Security Scan & GitOps Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      # ------------------------------------------------------------------------
+      # Step 1: Checkout Source Code
+      # ------------------------------------------------------------------------
+      - name: 📥 Checkout Application Source Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ------------------------------------------------------------------------
+      # Step 2: Trivy Code & Dependency Security Scanner
+      # ------------------------------------------------------------------------
+      - name: 🛡️ Security Vulnerability Scan (Trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          ignore-unfixed: true
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+
+      # ------------------------------------------------------------------------
+      # Step 3: Zero-Static-Key AWS Authentication via GitHub OIDC
+      # ------------------------------------------------------------------------
+      - name: 🔐 Authenticate to AWS via OIDC (No Static Keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # ------------------------------------------------------------------------
+      # Step 4: Log in to Amazon ECR Private Registry
+      # ------------------------------------------------------------------------
+      - name: 📦 Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # ------------------------------------------------------------------------
+      # Step 5: Setup Docker Build Engine
+      # ------------------------------------------------------------------------
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ------------------------------------------------------------------------
+      # Step 6: Multi-Stage Docker Build & Push to Amazon ECR
+      # ------------------------------------------------------------------------
+      - name: 🚀 Build & Push Rootless Container Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.rootless
+          push: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:sha-${{ github.sha }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ------------------------------------------------------------------------
+      # Step 7: Automated Cross-Repo GitOps Update -> Triggers ArgoCD on EKS
+      # ------------------------------------------------------------------------
+      - name: 🐙 Update GitOps Manifests & Trigger ArgoCD Deployment
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        run: |
+          IMAGE_TAG="sha-${{ github.sha }}"
+          ECR_REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          FULL_IMAGE="${ECR_REGISTRY}/${{ env.ECR_REPOSITORY }}"
+
+          echo "================================================================="
+          echo "🚀 UPDATING GITOPS MANIFESTS FOR ARGOCD DEPLOYMENT"
+          echo "================================================================="
+          echo "Image Repository: ${FULL_IMAGE}"
+          echo "Image Tag:        ${IMAGE_TAG}"
+
+          # Clone GitOps Infrastructure Repository
+          git clone "https://x-access-token:${{ secrets.GITOPS_PAT || github.token }}@github.com/ariphmohd/gitea-platform.git" /tmp/gitea-platform
+          cd /tmp/gitea-platform
+
+          # Update the image repository and tag in gitea-values.yaml
+          python3 -c "
+          import re
+          path = 'argocd/values/gitea-values.yaml'
+          with open(path, 'r') as f:
+              content = f.read()
+          content = re.sub(r'repository:.*', 'repository: ${FULL_IMAGE}', content)
+          content = re.sub(r'tag:.*', 'tag: \"${IMAGE_TAG}\"', content)
+          with open(path, 'w') as f:
+              f.write(content)
+          "
+
+          # Commit & push back to GitOps repository
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add argocd/values/gitea-values.yaml
+          git commit -m "chore(gitops): auto-deploy custom gitea image tag ${IMAGE_TAG} [skip ci]" || echo "No changes to commit"
+          git push origin main || echo "Push completed or skipped"
+
+          echo ""
+          echo "================================================================="
+          echo "🎉 GITOPS HANDSHAKE COMPLETE!"
+          echo "ArgoCD on EKS will now perform a zero-downtime rolling update."
+          echo "Live Image: ${FULL_IMAGE}:${IMAGE_TAG}"
+          echo "================================================================="

@@ -88,3 +88,31 @@ output "argocd_port_forward_command" {
   description = "Command to port-forward ArgoCD server to http://localhost:8080"
   value       = "kubectl port-forward svc/argocd-server -n argocd 8080:80"
 }
+
+# ------------------------------------------------------------------------------
+# Amazon ECR Outputs (Story 1)
+# ------------------------------------------------------------------------------
+
+output "ecr_repository_url" {
+  description = "The URL of the Amazon ECR repository"
+  value       = var.enable_ecr ? module.ecr[0].repository_url : ""
+}
+
+output "ecr_repository_arn" {
+  description = "The ARN of the Amazon ECR repository"
+  value       = var.enable_ecr ? module.ecr[0].repository_arn : ""
+}
+
+output "ecr_repository_name" {
+  description = "The name of the Amazon ECR repository"
+  value       = var.enable_ecr ? module.ecr[0].repository_name : ""
+}
+
+# ------------------------------------------------------------------------------
+# GitHub Actions OIDC Outputs
+# ------------------------------------------------------------------------------
+
+output "github_actions_role_arn" {
+  description = "IAM Role ARN for GitHub Actions OIDC Authentication"
+  value       = module.iam.github_actions_role_arn
+}

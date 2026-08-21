@@ -382,6 +382,45 @@ Provisions the Route 53 zone, issues the wildcard ACM SSL certificate (`*.ariphm
 
 ---
 
+### 📦 Stage 8: Provision Amazon ECR Private Container Registry
+Provisions the private, KMS-encrypted container registry `gitea-custom` in `ap-south-1` with automatic CVE vulnerability scanning on push and automated lifecycle cleanup:
+
+```bash
+./scripts/08-provision-ecr.sh
+```
+
+---
+
+### 🔐 Stage 9: Configure GitHub Actions AWS OIDC & Automated GitOps Pipeline
+Configures passwordless, zero-static-key authentication between GitHub Actions and AWS STS, and activates the automated GitOps continuous delivery pipeline to ArgoCD.
+
+```bash
+./scripts/09-setup-github-oidc.sh
+```
+
+#### ❓ Why Are We Using AWS OIDC (OpenID Connect)?
+* **🔴 The Old, Dangerous Way**: Storing permanent `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in GitHub repository settings. If those keys leak or get exposed, attackers gain permanent access to your AWS account.
+* **🟢 The Modern Gold-Standard Way**: **Zero static keys exist anywhere!** GitHub acts as an identity provider. When a workflow runs, GitHub generates a cryptographically signed token. AWS STS validates the token and issues temporary, 1-hour credentials that automatically self-destruct after the build.
+
+#### ❓ Why Do We Need the `GITOPS_PAT` Token?
+In an enterprise GitOps setup, we maintain **two isolated repositories**:
+1. **`ariphmohd/gitea`** *(App Repo)*: Houses the Go source code & Dockerfile.
+2. **`ariphmohd/gitea-platform`** *(GitOps Repo)*: Houses the Helm values & ArgoCD manifests.
+
+By default, GitHub security isolates repositories so workflows in Repo 1 cannot modify files in Repo 2. When Repo 1 builds a new container image and pushes it to Amazon ECR, it needs to update the image tag in `argocd/values/gitea-values.yaml` in Repo 2. The **`GITOPS_PAT` (Personal Access Token)** acts as the permission key allowing Repo 1 to update Repo 2, triggering ArgoCD to deploy the new image to EKS with zero downtime!
+
+#### 📋 1-Time GitHub Secret Setup Guide (Takes 1 Minute):
+1. **Generate Personal Access Token (PAT)**:
+   - Go to: [https://github.com/settings/tokens](https://github.com/settings/tokens)
+   - Click **Generate new token (classic)** $\rightarrow$ Note: `gitops-token` $\rightarrow$ Check **`repo`** scope $\rightarrow$ Click **Generate token** and copy `ghp_...`.
+2. **Add Secret to your App Repository (`ariphmohd/gitea`)**:
+   - Go to: `https://github.com/ariphmohd/gitea/settings/secrets/actions`
+   - Click **New repository secret** $\rightarrow$ Name: **`GITOPS_PAT`** $\rightarrow$ Value: *Paste token* $\rightarrow$ Click **Add secret**.
+3. **Trigger Workflow**:
+   - Push any commit to `ariphmohd/gitea` (or click **Run workflow** in GitHub Actions), and watch ArgoCD roll out your custom image to EKS!
+
+---
+
 ## 🌐 5. Production Service Access & Verification Guide
 
 > [!TIP]

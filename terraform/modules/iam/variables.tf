@@ -60,8 +60,14 @@ variable "efs_csi_service_account_name" {
   default     = "efs-csi-controller-sa"
 }
 
+variable "github_username" {
+  description = "GitHub username or organization owning the repositories (e.g. ariphmohd)"
+  type        = string
+  default     = "ariphmohd"
+}
+
 variable "tags" {
-  description = "Additional tags to apply to all resources"
+  description = "Common tags applied to all IAM resources"
   type        = map(string)
   default     = {}
 }
